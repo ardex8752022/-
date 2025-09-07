@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import pandas as pd
 import os
+import numpy as np
 
 RENAME_COLUMNS = {
    "остатки": {
@@ -17,7 +18,8 @@ RENAME_COLUMNS = {
         "Номенклатура.Марка (Бренд)": "Бренд",
         "Номенклатура.Категория": "Категория",
         "Номенклатура.Сезон": "Сезон",
-        "Цена (тг.)": "Прайс за ед."
+        "Цена (тг.)": "Прайс за ед.",
+        "Марка (Бренд)": "Бренд"
     }
 }
 
@@ -40,7 +42,7 @@ def clean_file(path, тип_файла):
         # Проверка типа
 
         if not isinstance(header_row, int):
-            raise TypeError(f"Оидался тип int для header_row, но получено:")
+            raise TypeError(f"Ожидался тип int для header_row, но получено: {type(header_row)}")
         
         print(f"Заголовки найдены на строке:{header_row}")
 
@@ -51,7 +53,7 @@ def clean_file(path, тип_файла):
         # Удаляем полностью пустые строки и столбцы
         df.dropna(axis=0, how='all', inplace=True)
         df.dropna(axis=1, how='all', inplace=True)
-        print(f"После очистки: {df.shape[0]} cnhjr, {df.shape[1]} столбцов")
+        print(f"После очистки: {df.shape[0]} строк, {df.shape[1]} столбцов")
 
         # Переименовываем колонки
         rename_map = RENAME_COLUMNS.get(тип_файла, {})
@@ -63,7 +65,7 @@ def clean_file(path, тип_файла):
         required = ["Магазин", "Номенклатура", "Характеристика"]
         missing = [col for col in required if col not in df.columns]
         if missing:
-            raise ValueError(f"Отстутсвуют обязательныеколонки: {missing}")
+            raise ValueError(f"Отстутсвуют обязательные колонки: {missing}")
 
         return df
 
@@ -89,7 +91,8 @@ class DataProcessor:
         self.price_df = clean_file(path, тип_файла = "прайс")
 
     def generate_summary(self):
-            # Проверка загрузки всех таблиц
+
+        # Проверка загрузки всех таблиц
         if self.stock_df is None:
             raise ValueError("Файл с остатками не загружен")
         if self.sales_df is None:
@@ -101,7 +104,7 @@ class DataProcessor:
         print("📈 Продажи:", self.sales_df.shape)
         print("💰 Прайс:", self.price_df.shape)
 
-        
+       
     # Объединение таблиц
         df = self.stock_df.merge(
             self.sales_df,
@@ -120,36 +123,75 @@ class DataProcessor:
 
         # Сохранение нужных столбцов
         columns_to_keep = [
-            "Магазин", "Номенклатура", "Характеристика",
-            "Бренд", "Категория", "Сезон",
+            "Магазин", "Бренд", "Номенклатура", "Характеристика",
+            "Категория", "Сезон",
             "Остаток","Себестоимость сумма", "Продажи", "Прайс за ед.",
             "Сумма продаж в РЦ", "Сумма остатков в РЦ"
-]
-
-        df_all = df_all[columns_to_keep]
+]      
 
         missing = [col for col in columns_to_keep if col not in df_all.columns]
         if missing:
-            raise ValueError(f"Отсутсвуют ожидаемые колонки: {missing}")
+            raise ValueError(f"Отсутствуют ожидаемые колонки: {missing}")
         
-        # Перестановка столбцов
+        df_all = df_all[columns_to_keep]
+ 
+        # 1) Приводим колонки к числовому типу (строки → NaN)
+        df_all["Остаток"] = pd.to_numeric(df_all["Остаток"], errors="coerce")
+        df_all["Себестоимость сумма"] = pd.to_numeric(df_all["Себестоимость сумма"], errors="coerce")
+
+       
+        
+        #  Расчет себестоимостиза единицу
+        df_all["Себестоимостьза ед."] = np.where(
+            df_all["Остаток"] > 0,
+            (df_all["Себестоимость сумма"] / df_all["Остаток"])
+                    .replace([np.inf, -np.inf], np.nan)  # убираем inf
+                    .fillna(0)                           # заменяем NaN
+                    .round(0)
+                    .astype(int),
+                0
+        )
+
+          # Перестановка столбцов
         desired_order = [
             "Магазин", "Бренд", "Категория", "Сезон",
             "Номенклатура", "Характеристика",
-            "Остаток","Себестоимость сумма", "Продажи", "Прайс за ед.",
+            "Остаток","Себестоимость сумма", "Себестоимостьза ед.", "Продажи", "Прайс за ед.",
             "Сумма продаж в РЦ", "Сумма остатков в РЦ"
         ]
 
-        df_all = df[desired_order]
-
-        # Сортировка
+        df_all = df_all[desired_order]
+    
+         # Сортировка
         sort_columns = ["Магазин", "Бренд", "Категория", "Номенклатура", "Характеристика"]
+        for col in sort_columns:
+            if col not in df_all.columns:
+                raise ValueError(f"Не хватает колонки для сортировки: {col}")
+
         df_all = df_all.sort_values(by=sort_columns)
 
 
         return df_all
-    # Добавить расчет заказа
 
+        # Добавить расчет заказа
+
+    def  calculate_order(self):
+        try:
+            days = int(self.days_entry.get())
+            if days <= 0:
+                raise ValueError("Введите положительное число дней")
+            
+        self.df_all["Заказ на период"] = self.df_all.apply(
+            lambda row: max(0, row["Продажи"] / 7 * days - row["Остаток"])
+            if pd.notnull(row["Продажи"]) and pd.notnull(row["Остаток"]) else 0,
+            axis=1
+        )
+
+
+        messagebox.showinfo("Готово",f"Заказ расчитан на {days} дней")
+        except Exception as e:
+        messagebox.showerror("Ошибка", f"Не удалось рассчитать заказ:\n{e}")
+        self.df_all = df
 
 
 class AppGUI:
@@ -170,7 +212,19 @@ class AppGUI:
 
         tk.Button(root, text="✅ Выгрузить сводную таблицу", command=self.save_summary, width=30).pack(pady=10)
 
+         # Поле для ввода количества дней
+        self.days_label = tk.Label(root, text="Период прогноза (в днях):")
+        self.days_label.pack()
 
+        self.days_entry = tk.Entry(root)
+        self.days_entry.insert(0, "14") # значение по умолчанию
+
+        self.days_entry.pack()
+
+        # Кнопка для расчёта заказа
+        self.calc_button = tk.Button(root, text="Расчитать заказ", command=self.calculate_order)
+        self.calc_button.pack()
+        
     def load_stock(self):
         path = filedialog.askopenfilename(title="Выберите файл с остатками")
         if path:
@@ -178,7 +232,7 @@ class AppGUI:
             messagebox.showinfo("Успех", "Файл с остатками загружен")
 
     def load_sales(self):
-        path = filedialog.askopenfilename(title="Выберите файлс продажами")
+        path = filedialog.askopenfilename(title="Выберите файл с продажами")
         if path:
             self.processor.load_sales(path)
             messagebox.showinfo("Успех", "Файл с продажами загружен")
@@ -210,7 +264,7 @@ class AppGUI:
                 os.startfile(path)
 
             # Сохраняем таблицу в атрибут класса
-            self.df_all = df
+            
             return df
 
         except Exception as e:
