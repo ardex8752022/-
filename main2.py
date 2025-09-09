@@ -298,68 +298,68 @@ class AppGUI:
             messagebox.showerror("Ошибка", f"Не удалось рассчитать заказ:\n{e}")
 
     # === Распределение с Центрального склада ===
-    def safe_int(value):
-    """Преобразует значение в целое число, заменяя NaN и ошибки на 0"""
-    num = pd.to_numeric(value, errors="coerce")
-    return int(0 if pd.isna(num) else num)
+    def safe_int(self, value):
+        """Преобразует значение в целое число, заменяя NaN и ошибки на 0"""
+        num = pd.to_numeric(value, errors="coerce")
+        return int(0 if pd.isna(num) else num)
 
 
     def build_distribution(self, df):
-    priority_stores = [
-        "Гранд парк",
-        "Азия парк Астана",
-        "Шымкент «Love is mama»",
-        "Aport East",
-        "Aport West",
-        "ГЦРЧ"
-    ]
+        priority_stores = [
+            "Гранд парк",
+            "Азия парк Астана",
+            "Шымкент «Love is mama»",
+            "Aport East",
+            "Aport West",
+            "ГЦРЧ"
+        ]
 
-    central_df = df[df["Магазин"] == "Центральный склад"]
-    result_rows = []
+        central_df = df[df["Магазин"] == "Центральный склад"]
+        result_rows = []
 
-    for _, central_row in central_df.iterrows():
-        central_stock = safe_int(central_row.get("Остаток", 0))
+        for _, central_row in central_df.iterrows():
+            central_stock = self.safe_int(central_row.get("Остаток", 0))
 
-        row_data = {
-            "Категория": central_row.get("Категория", ""),
-            "Сезон": central_row.get("Сезон", ""),
-            "Бренд": central_row.get("Бренд", ""),
-            "Номенклатура": central_row.get("Номенклатура", ""),
-            "Характеристика": central_row.get("Характеристика", ""),
-            "Откуда": "Центральный склад",
-            "Начальное кол-во у отправителя": central_stock,
-        }
+            row_data = {
+                "Категория": central_row.get("Категория", ""),
+                "Сезон": central_row.get("Сезон", ""),
+                "Бренд": central_row.get("Бренд", ""),
+                "Номенклатура": central_row.get("Номенклатура", ""),
+                "Характеристика": central_row.get("Характеристика", ""),
+                "Откуда": "Центральный склад",
+                "Начальное кол-во у отправителя": central_stock,
+            }
 
-        for store in priority_stores:
-            store_row = df[
-                (df["Магазин"] == store) &
-                (df["Номенклатура"] == central_row["Номенклатура"]) &
-                (df["Характеристика"] == central_row["Характеристика"])
-            ]
+            for store in priority_stores:
+                store_row = df[
+                    (df["Магазин"] == store) &
+                    (df["Номенклатура"] == central_row["Номенклатура"]) &
+                    (df["Характеристика"] == central_row["Характеристика"])
+                ]
 
-            if store_row.empty:
-                row_data["{} Начальный остаток".format(store)] = 0
-                row_data["{} Количество заказа".format(store)] = 0
-                row_data["{} Конечный остаток".format(store)] = 0
-            else:
-                store_row = store_row.iloc[0]
-                start_stock = safe_int(store_row.get("Остаток", 0))
-
-                if store_row.get("Комментарий") == "Дозаказ":
-                    need = safe_int(store_row.get("Заказ на период", 0))
+                if store_row.empty:
+                    row_data["{} Начальный остаток".format(store)] = 0
+                    row_data["{} Количество заказа".format(store)] = 0
+                    row_data["{} Конечный остаток".format(store)] = 0
                 else:
-                    need = 0
+                    store_row = store_row.iloc[0]
+                    start_stock = self.safe_int(store_row.get("Остаток", 0))
 
-                give = min(central_stock, need)
-                central_stock -= give
+                    if store_row.get("Комментарий") == "Дозаказ":
+                        need = self.safe_int(store_row.get("Заказ на период", 0))
+                    else:
+                        need = 0
 
-                row_data["{} Начальный остаток".format(store)] = start_stock
-                row_data["{} Количество заказа".format(store)] = give
-                row_data["{} Конечный остаток".format(store)] = start_stock + give
+                    give = min(central_stock, need)
+                    central_stock -= give
 
-        result_rows.append(row_data)
+                    row_data["{} Начальный остаток".format(store)] = start_stock
+                    row_data["{} Количество заказа".format(store)] = give
+                    row_data["{} Конечный остаток".format(store)] = start_stock + give
 
-    return pd.DataFrame(result_rows)
+            result_rows.append(row_data)
+
+        return pd.DataFrame(result_rows)
 
     def save_distribution(self):
         if self.df_all is None:
