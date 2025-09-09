@@ -143,19 +143,29 @@ class DataProcessor:
 
         return df_all
 
+
 class AppGUI:
     def __init__(self, root):
+        self.root = root
+        self.root.title("Распределение заказов")
+
+        # DataFrames
+        self.stock_df = None
+        self.sales_df = None
+        self.price_df = None
+        self.min_stock_df = None
+        self.df_all = None  # объединённые данные
         self.root = root
         self.root.title("Обработка остатков и продаж")
         self.root.geometry("400x400")
         self.processor = DataProcessor()
-        self.df_all = None
+        
 
-        tk.Label(root, text="Загрузка данных", font=("Arial", 14)).pack(pady=10)
-
+        # === Кнопки для загрузки файлов ===
         tk.Button(root, text="📦 Загрузить остатки", command=self.load_stock, width=30).pack(pady=5)
         tk.Button(root, text="📈 Загрузить продажи", command=self.load_sales, width=30).pack(pady=5)
         tk.Button(root, text="📋 Загрузить прайс-лист", command=self.load_price, width=30).pack(pady=5)
+        tk.Button(root, text="⚙ Загрузить минимальные остатки", command=self.load_min_stock, width=30).pack(pady=5)
 
         tk.Label(root, text="").pack()  # Пустой отступ
 
@@ -167,89 +177,115 @@ class AppGUI:
         self.days_entry.insert(0, "14")
         self.days_entry.pack()
 
-        # Кнопка для расчёта заказа
+        # === Кнопки действий ===
         self.calc_button = tk.Button(root, text="Рассчитать заказ и сохранить", command=self.calculate_order)
         self.calc_button.pack(pady=10)
 
+        self.dist_button = tk.Button(root, text="📦 Подсорт с Центрального склада", command=self.save_distribution)
+        self.dist_button.pack(pady=10)
+
+    # === Загрузка файлов ===
     def load_stock(self):
-        path = filedialog.askopenfilename(title="Выберите файл с остатками")
-        if path:
-            self.processor.load_stock(path)
-            messagebox.showinfo("Успех", "Файл с остатками загружен")
+        path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+        if not path:
+            return
+        try:
+            self.processor.load_stock(path) # здесь clean_file вызовется автоматически
+            self.stock_df = self.processor.stock_df
+            messagebox.showinfo("Файл загружен", f"Остатки загружены: {len(self.stock_df)} строк")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось загрузить остатки:\n{e}")
 
     def load_sales(self):
-        path = filedialog.askopenfilename(title="Выберите файл с продажами")
-        if path:
-            self.processor.load_sales(path)
-            messagebox.showinfo("Успех", "Файл с продажами загружен")
+        path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+        if not path:
+            return
+        try:
+            self.processor.load_sales(path) # здесь clean_file вызовется автоматически
+            self.sales_df = self.processor.sales_df
+            messagebox.showinfo("Файл загружен", f"Продажи загружены: {len(self.sales_df)} строк")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось загрузить продажи:\n{e}")
 
     def load_price(self):
-        path = filedialog.askopenfilename(title="Выберите прайс-лист")
-        if path:
-            self.processor.load_price(path)
-            messagebox.showinfo("Успех", "Прайс-лист загружен")
-
-    def calculate_order(self):
+        path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+        if not path:
+            return
         try:
-            # формируем сводную таблицу
-            df = self.processor.generate_summary()
-            if df is None:
-                raise ValueError("Сводная таблица не была создана — проверьте загрузку файлов")
+            self.processor.load_price(path) # здесь clean_file вызовется автоматически
+            self.price_df = self.processor.price_df
+            messagebox.showinfo("Файл загружен", f"Прайс-лист загружен: {len(self.price_df)} строк")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось загрузить прайс-лист:\n{e}")
 
-            days_str = self.days_entry.get().strip()
-            days = int(days_str)
+    def load_min_stock(self):
+        path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+        if not path:
+            return
+        try:
+            self.min_stock_df = pd.read_excel(path)
+            if not {"Категория", "min stock", "max прием"}.issubset(self.min_stock_df.columns):
+                raise ValueError("В файле должны быть колонки: Категория, min stock, max прием")
+            messagebox.showinfo("Файл загружен", f"Минимальные остатки загружены: {len(self.min_stock_df)} строк")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось загрузить минимальные остатки:\n{e}")
+
+    # === Расчёт заказа ===
+    def calculate_order(self):
+        if self.stock_df is None or self.sales_df is None or self.price_df is None:
+            messagebox.showerror("Ошибка", "Сначала загрузите остатки, продажи и прайс-лист")
+            return
+
+        try:
+            days = int(self.days_entry.get())
             if days <= 0:
                 raise ValueError("Введите положительное число дней")
             
-            # заменяем NaN на 0
-            df["Продажи"] = df["Продажи"].fillna(0)
-            df["Остаток"] = df["Остаток"].fillna(0)
+            # 🔹 передаём данные в процессор
+            self.processor.stock_df = self.stock_df
+            self.processor.sales_df = self.sales_df
+            self.processor.price_df = self.price_df
 
-            # средние продажи в день
-            avg_per_day = df["Продажи"] / 7.0
+            df = self.processor.generate_summary()  # Берём объединённый датафрейм через DataProcessor
 
-            # прогноз на период
-            forecast = avg_per_day * days
+            # Расчет заказа
+            df["Заказ на период"] = df.apply(
+                lambda row: (row.get("Продажи", 0) / 7.0) * days - row.get("Остаток", 0),
+                axis=1
+            )
 
-            # заказ может быть отрицательным (если остаток больше чем нужно)
-            df["Заказ на период"] = forecast - df["Остаток"]
-
-            # комменраии
-            def get_comment(row):
-                if row["Заказ на период"] <=-2:
+            # Комментарии
+            def comment(row):
+                if row["Остаток"] == 0 and row.get("Продажи", 0) == 0 and row["Заказ на период"] == 0:
+                    return "Отправить минимальное количество"
+                elif row["Заказ на период"] < 0:
                     return "Излишек"
                 elif row["Заказ на период"] > 0:
                     return "Дозаказ"
-                elif row["Заказ на период"] == 0 and row["Остаток"] == 0 and row["Продажи"] == 0:
-                    return "Отправить минимальное количество"
                 else:
-                    return "Норма"
-                    
-            df["Комментарий"] = df.apply(get_comment, axis=1)
+                    return ""
 
-            # фильтрация по нужным складам
-            allowed_stores = [
-                 "Aport East",
-            "Aport West",
-            "Азия парк Астана",
-            "Гранд парк",
-            "ГЦРЧ",
-            "Центральный склад",
-            "Шымкент «Love is mama»"
-            ]
-            df = df[df["Магазин"].isin(allowed_stores)]
-                    
+            df["Комментарий"] = df.apply(comment, axis=1)
 
-            self.df_all = df # сохраняем в атрибут
+            # Минимальные остатки
+            if self.min_stock_df is not None:
+                df = df.merge(
+                    self.min_stock_df[["Категория", "max прием"]],
+                    on="Категория",
+                    how="left"
+                )
+                df.loc[df["Комментарий"] == "Отправить минимальное количество", "Заказ на период"] = \
+                    df.loc[df["Комментарий"] == "Отправить минимальное количество", "max прием"].fillna(0)
+                df.drop(columns=["max прием"], inplace=True, errors="ignore")
 
-            
-            # сохраняем сразу с колонкой "Заказ на период"
+            self.df_all = df
+
+            # Сохраняем файл
             path = filedialog.asksaveasfilename(
                 defaultextension=".xlsx",
                 filetypes=[("Excel files", "*.xlsx")],
-                title="Сохранить таблицу с заказом"
+                title="Сохранить файл заказа"
             )
-
             if path:
                 df.to_excel(path, index=False)
                 messagebox.showinfo("Сохранено", f"Файл сохранен:\n{path}")
@@ -261,31 +297,95 @@ class AppGUI:
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось рассчитать заказ:\n{e}")
 
-    # (опционально) отдельная функция сохранения сводной без расчёта
-    def save_summary(self):
+    # === Распределение с Центрального склада ===
+    def safe_int(value):
+    """Преобразует значение в целое число, заменяя NaN и ошибки на 0"""
+    num = pd.to_numeric(value, errors="coerce")
+    return int(0 if pd.isna(num) else num)
+
+
+    def build_distribution(self, df):
+    priority_stores = [
+        "Гранд парк",
+        "Азия парк Астана",
+        "Шымкент «Love is mama»",
+        "Aport East",
+        "Aport West",
+        "ГЦРЧ"
+    ]
+
+    central_df = df[df["Магазин"] == "Центральный склад"]
+    result_rows = []
+
+    for _, central_row in central_df.iterrows():
+        central_stock = safe_int(central_row.get("Остаток", 0))
+
+        row_data = {
+            "Категория": central_row.get("Категория", ""),
+            "Сезон": central_row.get("Сезон", ""),
+            "Бренд": central_row.get("Бренд", ""),
+            "Номенклатура": central_row.get("Номенклатура", ""),
+            "Характеристика": central_row.get("Характеристика", ""),
+            "Откуда": "Центральный склад",
+            "Начальное кол-во у отправителя": central_stock,
+        }
+
+        for store in priority_stores:
+            store_row = df[
+                (df["Магазин"] == store) &
+                (df["Номенклатура"] == central_row["Номенклатура"]) &
+                (df["Характеристика"] == central_row["Характеристика"])
+            ]
+
+            if store_row.empty:
+                row_data["{} Начальный остаток".format(store)] = 0
+                row_data["{} Количество заказа".format(store)] = 0
+                row_data["{} Конечный остаток".format(store)] = 0
+            else:
+                store_row = store_row.iloc[0]
+                start_stock = safe_int(store_row.get("Остаток", 0))
+
+                if store_row.get("Комментарий") == "Дозаказ":
+                    need = safe_int(store_row.get("Заказ на период", 0))
+                else:
+                    need = 0
+
+                give = min(central_stock, need)
+                central_stock -= give
+
+                row_data["{} Начальный остаток".format(store)] = start_stock
+                row_data["{} Количество заказа".format(store)] = give
+                row_data["{} Конечный остаток".format(store)] = start_stock + give
+
+        result_rows.append(row_data)
+
+    return pd.DataFrame(result_rows)
+
+    def save_distribution(self):
+        if self.df_all is None:
+            messagebox.showerror("Ошибка", "Сначала рассчитайте заказ")
+            return
+
         try:
-            df = self.processor.generate_summary()
-            if df is None:
-                raise ValueError("Сводная таблица не была создана — проверьте загрузку файлов")
-            self.df_all = df
+            dist_df = self.build_distribution(self.df_all)
             path = filedialog.asksaveasfilename(
                 defaultextension=".xlsx",
                 filetypes=[("Excel files", "*.xlsx")],
-                title="Сохранить сводную таблицу"
+                title="Сохранить файл Подсорт"
             )
             if path:
-                df.to_excel(path, index=False)
-                messagebox.showinfo("Сохранено", f"Файл сохранен: \n{path}")
+                dist_df.to_excel(path, index=False)
+                messagebox.showinfo("Сохранено", f"Файл сохранен:\n{path}")
                 try:
                     os.startfile(path)
                 except Exception:
                     pass
-            return df
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось сохранить файл:\n{e}")
-            return None
+            messagebox.showerror("Ошибка", f"Не удалось построить распределение:\n{e}")
+
 
 if __name__ == "__main__":
+    print("Старт программы")  # Проверка запуска
     root = tk.Tk()
     app = AppGUI(root)
     root.mainloop()
