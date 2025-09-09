@@ -175,30 +175,15 @@ class DataProcessor:
 
         # Добавить расчет заказа
 
-    def  calculate_order(self):
-        try:
-            days = int(self.days_entry.get())
-            if days <= 0:
-                raise ValueError("Введите положительное число дней")
-            
-        self.df_all["Заказ на период"] = self.df_all.apply(
-            lambda row: max(0, row["Продажи"] / 7 * days - row["Остаток"])
-            if pd.notnull(row["Продажи"]) and pd.notnull(row["Остаток"]) else 0,
-            axis=1
-        )
-
-
-        messagebox.showinfo("Готово",f"Заказ расчитан на {days} дней")
-        except Exception as e:
-        messagebox.showerror("Ошибка", f"Не удалось рассчитать заказ:\n{e}")
-        self.df_all = df
+    
+        
 
 
 class AppGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Обработка остатков и продаж")
-        self.root.geometry("400x250")
+        self.root.geometry("400x400")
         self.processor = DataProcessor()
         self.df_all = None
 
@@ -210,20 +195,18 @@ class AppGUI:
 
         tk.Label(root, text="").pack() # Пустой отступ
 
-        tk.Button(root, text="✅ Выгрузить сводную таблицу", command=self.save_summary, width=30).pack(pady=10)
-
          # Поле для ввода количества дней
-        self.days_label = tk.Label(root, text="Период прогноза (в днях):")
+        self.days_label = tk.Label(root, text="Период прогноза(в днях):")
         self.days_label.pack()
 
         self.days_entry = tk.Entry(root)
         self.days_entry.insert(0, "14") # значение по умолчанию
-
         self.days_entry.pack()
 
         # Кнопка для расчёта заказа
-        self.calc_button = tk.Button(root, text="Расчитать заказ", command=self.calculate_order)
-        self.calc_button.pack()
+        self.calc_button = tk.Button(root, text="Расчитать заказ и сохранить", command=self.calculate_order)
+        self.calc_button.pack(pady=10)
+
         
     def load_stock(self):
         path = filedialog.askopenfilename(title="Выберите файл с остатками")
@@ -243,6 +226,42 @@ class AppGUI:
             self.processor.load_price(path)
             messagebox.showinfo("Успех", "Прайс-лист загружен")
 
+    def calculate_order(self):
+        try:
+            # формируем сводную таблицу
+            df = self.processor.generate_summary()
+
+            days = int(self.days_entry.get())
+            if days <= 0:
+                raise ValueError("Введите положительное число дней")
+            
+            # расчет заказа
+            df["Заказ на период"] = df.apply(
+                lambda row: max(0, row["Продажи"] / 7 * days - row["Остаток"])
+                if pd.notnull(row.get("Продажи")) and pd.notnull(row.get("Остаток")) else 0,
+                axis=1
+            )
+
+            self.df_all = df # сохраняем в атрибут
+
+            # сохраняем сразу с колонкой "Заказ на период"
+            path = filedialog.asksaveasfilename(
+                defaultextension=".xlsx",
+                filetypes=[("Excel files", "*.xlsx")],
+            )
+
+            if path:
+                df.to_excel(path, index=False)
+                messagebox.showinfo("Сохранено", f"Файл сохранен: \n{path}")
+                try:
+                    os.startfile(path)
+                except Exception:
+                    pass
+
+        except Exception as e:
+                messagebox.showerror("Ошибка", f"Не удалось рассчитать заказ:\n{eval}")
+        
+
     def save_summary(self):
         try:
             # Генерация сводной таблицы
@@ -250,6 +269,11 @@ class AppGUI:
 
             if df is None:
                 raise ValueError("Сводная таблица не была создана — проверь загрузку файлов")
+
+            # --- Важно: сохраняем сводную таблицу в атрибут класса ---
+            self.df_all = df
+             # Разрешаем кнопку расчёта
+            self.calc_button.config(state=tk.NORMAL)
 
             # Сохранение файла
             path = filedialog.asksaveasfilename(
@@ -261,7 +285,11 @@ class AppGUI:
             if path:
                 df.to_excel(path, index=False)
                 messagebox.showinfo("Сохранено", f"Файл сохранен: \n{path}")
-                os.startfile(path)
+                try:
+                    os.startfile(path)
+                except Exception:
+                    # на случай, если os.startfile недоступен — просто игнорируем
+                    pass
 
             # Сохраняем таблицу в атрибут класса
             
@@ -271,7 +299,7 @@ class AppGUI:
             messagebox.showerror("Ошибка", f"Не удалось сохранить файл:\n{e}")
             return None
 
-
+    
         
 
 if __name__ == "__main__":
