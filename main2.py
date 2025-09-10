@@ -558,13 +558,6 @@ class AppGUI:
    
 
     def build_mezhmag_distribution(self, df):
-        """
-        Строит таблицу 'Межмаг':
-        - доноры: магазины с Комментарием 'Излишек'
-        - получатели: 'Дозаказ' и 'Отправить минимальное количество'
-        - Центральный склад исключается
-        - одна строка = один донор
-        """
         priority_stores = [
             "Гранд парк",
             "Азия парк Астана",
@@ -574,11 +567,24 @@ class AppGUI:
             "ГЦРЧ"
         ]
 
+        donor_priority = [
+            "Aport East",
+            "Aport West",
+            "ГЦРЧ",
+            "Гранд парк",
+            "Шымкент «Love is mama»",
+            "Азия парк Астана"
+        ]
+
         # 🔹 Убираем Центральный склад
         df = df[df["Магазин"] != "Центральный склад"]
 
-        # 🔹 Доноры
-        donors = df[df["Комментарий"] == "Излишек"].copy()
+        # 🔹 Доноры: только из списка donor_priority
+        donors = df[
+            (df["Комментарий"] == "Излишек") &
+            (df["Магазин"].isin(donor_priority))
+        ].copy()
+
         donors["Доступно"] = (donors["Остаток"] - donors["min stock"].fillna(0)).clip(lower=0)
         donors["Доступно"] = np.minimum(donors["Доступно"], donors["Заказ на период"].abs())
 
@@ -602,7 +608,9 @@ class AppGUI:
 
         result_rows = []
 
-        # 🔹 Один проход по донорам
+        # 🔹 Проход по донорам в порядке приоритета
+        donors = donors.sort_values(by="Магазин", key=lambda col: [donor_priority.index(m) for m in col])
+
         for _, donor in donors.iterrows():
             central_stock = donor["Доступно"]
 
