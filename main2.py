@@ -184,6 +184,8 @@ class AppGUI:
         self.dist_button = tk.Button(root, text="📦 Подсорт с Центрального склада", command=self.save_distribution)
         self.dist_button.pack(pady=10)
 
+        
+
     # === Загрузка файлов ===
     def load_stock(self):
         path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
@@ -248,11 +250,18 @@ class AppGUI:
 
             df = self.processor.generate_summary()  # Берём объединённый датафрейм через DataProcessor
 
+            # Заменяем пустые значения на 0, чтобы не мешали при расчетах
+            df["Остаток"] = df["Остаток"].fillna(0)
+            df["Продажи"] = df["Продажи"].fillna(0)
+            
+
             # Расчет заказа
             df["Заказ на период"] = df.apply(
                 lambda row: (row.get("Продажи", 0) / 7.0) * days - row.get("Остаток", 0),
                 axis=1
             )
+
+            df["Заказ на период"] = df["Заказ на период"].fillna(0)
 
             # Комментарии
             def comment(row):
@@ -313,6 +322,10 @@ class AppGUI:
             "Aport West",
             "ГЦРЧ"
         ]
+        
+        # Создаем быстрый словарь для поиска строк
+        lookup = df.set_index(["Магазин", "Номенклатура", "Характеристика"]).to_dict("index")
+        
 
         central_df = df[df["Магазин"] == "Центральный склад"]
         result_rows = []
@@ -331,24 +344,26 @@ class AppGUI:
             }
 
             for store in priority_stores:
-                store_row = df[
-                    (df["Магазин"] == store) &
-                    (df["Номенклатура"] == central_row["Номенклатура"]) &
-                    (df["Характеристика"] == central_row["Характеристика"])
-                ]
+                key = (store, central_row["Номенклатура"], central_row['Характеристика'])
+                store_row = lookup.get(key)
+                
 
-                if store_row.empty:
+                if store_row is None:
                     row_data["{} Начальный остаток".format(store)] = 0
                     row_data["{} Количество заказа".format(store)] = 0
                     row_data["{} Конечный остаток".format(store)] = 0
                 else:
-                    store_row = store_row.iloc[0]
                     start_stock = self.safe_int(store_row.get("Остаток", 0))
+                    comment = str(store_row.get("Комментарий", "")).strip()
 
-                    if store_row.get("Комментарий") == "Дозаказ":
+                    if comment == "Дозаказ":
+                        need = self.safe_int(store_row.get("Заказ на период", 0))
+                    elif comment == "Отправить минимальное количество":
                         need = self.safe_int(store_row.get("Заказ на период", 0))
                     else:
                         need = 0
+                    
+
 
                     give = min(central_stock, need)
                     central_stock -= give
@@ -357,9 +372,16 @@ class AppGUI:
                     row_data["{} Количество заказа".format(store)] = give
                     row_data["{} Конечный остаток".format(store)] = start_stock + give
 
-            result_rows.append(row_data)
 
-        return pd.DataFrame(result_rows)
+            result_rows.append(row_data)
+        result_df = pd.DataFrame(result_rows)
+
+        #return pd.DataFrame(result_rows)
+        # 🔹 Убираем строки, где на Центральном складе остаток = 0
+        result_df = result_df[result_df["Начальное кол-во у отправителя"] > 0].reset_index(drop=True)
+
+        return result_df
+   
 
     def save_distribution(self):
         if self.df_all is None:
