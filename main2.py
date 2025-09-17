@@ -5,6 +5,9 @@ import os
 import sys
 import subprocess
 import numpy as np
+from openpyxl import load_workbook
+from openpyxl.styles import Border, Side, Alignment
+from openpyxl.utils import get_column_letter
 
 RENAME_COLUMNS = {
    "остатки": {
@@ -355,9 +358,9 @@ class AppGUI:
                 
 
                 if store_row is None:
-                    row_data["{} Начальный остаток".format(store)] = 0
+                    # row_data["{} Начальный остаток".format(store)] = 0
                     row_data["{} Количество заказа".format(store)] = 0
-                    row_data["{} Конечный остаток".format(store)] = 0
+                    # row_data["{} Конечный остаток".format(store)] = 0
                 else:
                     start_stock = self.safe_int(store_row.get("Остаток", 0))
                     comment = str(store_row.get("Комментарий", "")).strip()
@@ -368,18 +371,24 @@ class AppGUI:
                         need = self.safe_int(store_row.get("Заказ на период", 0))
                     else:
                         need = 0
-                    
 
 
                     give = min(central_stock, need)
                     central_stock -= give
-
-                    row_data["{} Начальный остаток".format(store)] = start_stock
                     row_data["{} Количество заказа".format(store)] = give
-                    row_data["{} Конечный остаток".format(store)] = start_stock + give
+
+            total_given = sum(row_data[f"{store} Количество заказа"] for store in priority_stores)
+
+            # row_data["{} Начальный остаток".format(store)] = start_stock
+            row_data["{} Количество заказа".format(store)] = give
+            # row_data["{} Конечный остаток".format(store)] = start_stock + give
+            row_data["Конечный остаток на ЦС"] = central_stock
 
 
-            result_rows.append(row_data)
+            if total_given > 0:
+
+
+                result_rows.append(row_data)
         result_df = pd.DataFrame(result_rows)
 
         #return pd.DataFrame(result_rows)
