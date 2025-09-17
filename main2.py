@@ -637,9 +637,9 @@ class AppGUI:
                 # row_data[f"{store} Конечный остаток"] = start_stock + give
 
             total_given = sum(row_data[f"{store} Количество заказа"] for store in priority_stores)
-            row_data["Конечный остаток уотправителя"] = int(donor["Остаток"] - total_given)
-
-            result_rows.append(row_data)
+            if total_given > 0:
+                row_data["Конечный остаток уотправителя"] = int(donor["Остаток"] - total_given)
+                result_rows.append(row_data)
 
         return pd.DataFrame(result_rows)
 
