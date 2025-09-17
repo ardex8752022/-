@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import ttk
 from tkinter import filedialog, messagebox
 import pandas as pd
 import os
@@ -197,51 +198,41 @@ class DataProcessor:
         return df_all
 
 
+from tkinter import ttk
+
 class AppGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Распределение заказов")
-
-        # DataFrames
-        self.stock_df = None
-        self.sales_df = None
-        self.price_df = None
-        self.min_stock_df = None
-        self.df_all = None  # объединённые данные
-        self.root = root
-        self.root.title("Обработка остатков и продаж")
-        self.root.geometry("400x400")
+        #self.root.title("Обработка остатков и продаж")
+        self.root.geometry("480x420")
         self.processor = DataProcessor()
-        
 
-        # === Кнопки для загрузки файлов ===
-        tk.Button(root, text="📦 Загрузить остатки", command=self.load_stock, width=30).pack(pady=5)
-        tk.Button(root, text="📈 Загрузить продажи", command=self.load_sales, width=30).pack(pady=5)
-        tk.Button(root, text="📋 Загрузить прайс-лист", command=self.load_price, width=30).pack(pady=5)
-        tk.Button(root, text="⚙ Загрузить минимальные остатки", command=self.load_min_stock, width=30).pack(pady=5)
+        # Заголовок
+        title = ttk.Label(root, text="📊 Расспределение товара", font=("Arial", 14, "bold"))
+        title.grid(row=0, column=0, columnspan=3, pady=10)
 
-        tk.Label(root, text="").pack()  # Пустой отступ
+        # === Кнопки загрузки файлов ===
+        ttk.Button(root, text="📦 Загрузить остатки", command=self.load_stock).grid(row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=5)
+        ttk.Button(root, text="📈 Загрузить продажи", command=self.load_sales).grid(row=2, column=0, columnspan=3, sticky="ew", padx=20, pady=5)
+        ttk.Button(root, text="📋 Загрузить прайс-лист", command=self.load_price).grid(row=3, column=0, columnspan=3, sticky="ew", padx=20, pady=5)
+        ttk.Button(root, text="⚙ Загрузить минимальные остатки", command=self.load_min_stock).grid(row=4, column=0, columnspan=3, sticky="ew", padx=20, pady=5)
 
-        # Поле для ввода количества дней
-        self.days_label = tk.Label(root, text="Период прогноза (в днях):")
-        self.days_label.pack()
-
-        self.days_entry = tk.Entry(root)
+        # === Поле ввода периода ===
+        ttk.Label(root, text="Период прогноза (в днях):", font=("Arial", 11)).grid(row=5, column=0, sticky="e", padx=10, pady=10)
+        self.days_entry = ttk.Entry(root, width=10)
         self.days_entry.insert(0, "14")
-        self.days_entry.pack()
+        self.days_entry.grid(row=5, column=1, sticky="w", padx=5, pady=10)
 
         # === Кнопки действий ===
-        self.calc_button = tk.Button(root, text="Рассчитать заказ и сохранить", command=self.calculate_order)
-        self.calc_button.pack(pady=10)
+        ttk.Button(root, text="📊 Рассчитать заказ и сохранить", command=self.calculate_order).grid(row=6, column=0, columnspan=3, sticky="ew", padx=20, pady=8)
+        ttk.Button(root, text="📦 Подсорт с Центрального склада", command=self.save_distribution).grid(row=7, column=0, columnspan=3, sticky="ew", padx=20, pady=8)
+        ttk.Button(root, text="🔄 Рассчитать межмаг", command=self.recalc_mezhmag).grid(row=8, column=0, columnspan=3, sticky="ew", padx=20, pady=8)
+        ttk.Button(root, text="💾 Выгрузить межмаг", command=self.save_mezhmag_to_excel).grid(row=9, column=0, columnspan=3, sticky="ew", padx=20, pady=8)
 
-        self.dist_button = tk.Button(root, text="📦 Подсорт с Центрального склада", command=self.save_distribution)
-        self.dist_button.pack(pady=10)
-
-        self.recalc_mezhmag_button = tk.Button(root, text="🔄 Рассчитать межмаг", command=self.recalc_mezhmag)
-        self.recalc_mezhmag_button.pack(pady=10)
-
-        self.save_mezhmag_button = tk.Button(root, text="💾 Выгрузить межмаг", command=self.save_mezhmag_to_excel)
-        self.save_mezhmag_button.pack(pady=10)
+        # Растягиваем центральную колонку
+        root.grid_columnconfigure(0, weight=1)
+        root.grid_columnconfigure(1, weight=1)
+        root.grid_columnconfigure(2, weight=1)
 
     # === Загрузка файлов ===
     def load_stock(self):
