@@ -632,9 +632,12 @@ class AppGUI:
                 give = min(central_stock, rec_need)
                 central_stock -= give
 
-                row_data[f"{store} Начальный остаток"] = start_stock
+                # row_data[f"{store} Начальный остаток"] = start_stock
                 row_data[f"{store} Количество заказа"] = give
-                row_data[f"{store} Конечный остаток"] = start_stock + give
+                # row_data[f"{store} Конечный остаток"] = start_stock + give
+
+            total_given = sum(row_data[f"{store} Количество заказа"] for store in priority_stores)
+            row_data["Конечный остаток уотправителя"] = int(donor["Остаток"] - total_given)
 
             result_rows.append(row_data)
 
