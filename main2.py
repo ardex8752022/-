@@ -61,33 +61,49 @@ def clean_file(path, тип_файла):
         print(f"Ошибка при обработке файла: {e}")
         raise
 
-def format_excel_file(path: str):
+def format_excel_file(path: str, sheet_name: str = None, fixed_width: int = 10):
     wb = load_workbook(path)
 
-    # 📝 Явно говорим Pylance, что ws — это Worksheet, а не None
-    ws: Worksheet = wb.active  
+    # выбираем лист по имени, если передан
+    if sheet_name and sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+    else:
+        ws = wb.active
 
-    # 🔹 Увеличение высоты строки заголовков
-    ws.row_dimensions[1].height = 30
+    if ws is None:
+        raise ValueError("Файл не содержит активного листа")
 
-    # 🔹 Автофильтр
     max_col = ws.max_column
     max_row = ws.max_row
+
+    # 🔹 фиксированная высота заголовка
+    ws.row_dimensions[1].height = 50
+
+    # 🔹 автофильтр
     ws.auto_filter.ref = f"A1:{get_column_letter(max_col)}{max_row}"
 
-    # 🔹 Вертикальные линии-разделители
+    # 🔹 закрепляем заголовок (строка 1)
+    ws.freeze_panes = "A2"
+
+    # 🔹 стиль границ
     thin = Side(border_style="thin", color="000000")
 
     for col in range(1, max_col + 1):
         col_letter = get_column_letter(col)
+
+        # задаём фиксированную ширину (например, 20 символов)
+        ws.column_dimensions[col_letter].width = fixed_width
+
         for row in range(1, max_row + 1):
             cell = ws[f"{col_letter}{row}"]
 
-            # Выравнивание текста
-            cell.alignment = Alignment(vertical="center", wrap_text=True)
+            if row == 1:  # заголовок
+                cell.alignment = Alignment(vertical="center", wrap_text=True, horizontal="center")
+            else:  # данные
+                cell.alignment = Alignment(vertical="center", wrap_text=False)
 
-            # Правая граница у каждой ячейки (чтобы были вертикальные линии)
-            cell.border = Border(right=thin)
+            # рамка со всех сторон
+            cell.border = Border(top=thin, left=thin, right=thin, bottom=thin)
 
     wb.save(path)
 
@@ -443,34 +459,15 @@ class AppGUI:
                 filetypes=[("Excel files", "*.xlsx")],
                 title="Сохранить файл Подсорт"
             )
-            if path:
-            # 1. Сохраняем DataFrame в Excel
-             with pd.ExcelWriter(path, engine="openpyxl") as writer:
-                dist_df.to_excel(writer, index=False, sheet_name="Подсорт")
+            if not path:
+                return
 
-            # 2. Загружаем и форматируем
-             wb = load_workbook(path)
-             ws = wb.active
+        # сохраняем Excel
+            with pd.ExcelWriter(path, engine="openpyxl") as writer:
+                 dist_df.to_excel(writer, index=False, sheet_name="Подсорт")
 
-            # 🔹 Увеличение высоты строки заголовков
-             ws.row_dimensions[1].height = 30
-
-            # 🔹 Автофильтр
-             max_col = ws.max_column
-             max_row = ws.max_row
-             ws.auto_filter.ref = f"A1:{get_column_letter(max_col)}{max_row}"
-
-            # 🔹 Вертикальные линии-разделители (границы между колонками)
-            thin = Side(border_style="thin", color="000000")
-            for col in range(1, max_col + 1):
-                col_letter = get_column_letter(col)
-                for row in range(1, max_row + 1):
-                    cell = ws[f"{col_letter}{row}"]
-                    cell.alignment = Alignment(vertical="center", wrap_text=True)
-                    # Рисуем правую границу у каждой колонки
-                    cell.border = Border(right=thin)
-
-            wb.save(path)
+            # применяем форматирование
+            format_excel_file(path)
 
             messagebox.showinfo("Сохранено", f"Файл сохранен:\n{path}")
             try:
@@ -479,7 +476,7 @@ class AppGUI:
                 pass
 
         except Exception as e:
-         messagebox.showerror("Ошибка", f"Не удалось построить распределение:\n{e}")
+            messagebox.showerror("Ошибка", f"Не удалось построить распределение:\n{e}")
 
     def update_stock_after_distribution(self, df, dist_df):
     #Обновляем остатки магазинов по конечным остаткам из таблицы Подсорта
@@ -595,36 +592,30 @@ class AppGUI:
                 filetypes=[("Excel files", "*.xlsx")],
                 title="Сохранить файл Межмаг"
             )
-            if path:
-                self.mezhmag_df.to_excel(path, index=False)
-                messagebox.showinfo("Сохранено", f"Файл сохранён:\n{path}")
-                try:
-                    os.startfile(path)
-                except Exception:
-                    pass
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось сохранить файл:\n{e}")
+            if not path:
+                return
 
+            # сохраняем Excel
+            with pd.ExcelWriter(path, engine="openpyxl") as writer:
+                self.mezhmag_df.to_excel(writer, index=False, sheet_name="Межмаг")
 
+            # применяем форматирование
+            try:
+                format_excel_file(path)
+            except Exception as fe:
+                messagebox.showwarning("Внимание", f"Файл сохранен, но форматирование не применилось:\n{fe}")
 
-    def export_mezhmag(self):
-        if not hasattr(self, "mezhmag_df"):
-            messagebox.showerror("Ошибка", "Сначала рассчитайте межмаг")
-            return
+            messagebox.showinfo("Сохранено", f"Файл сохранён:\n{path}")
 
-        path = filedialog.asksaveasfilename(
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx")],
-            title="Сохранить файл Межмаг"
-        )
-        if path:
-            self.mezhmag_df.to_excel(path, index=False)
-            messagebox.showinfo("Сохранено", f"Файл сохранен:\n{path}")
             try:
                 os.startfile(path)
             except Exception:
                 pass
-   
+
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить файл:\n{e}")
+
+
 
     def build_mezhmag_distribution(self, df):
         priority_stores = [
@@ -711,8 +702,8 @@ class AppGUI:
                 result_rows.append(row_data)
 
         return pd.DataFrame(result_rows)
-
-
+    
+    
 
 if __name__ == "__main__":
     print("Старт программы")  # Проверка запуска
