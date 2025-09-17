@@ -8,6 +8,8 @@ import numpy as np
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment
 from openpyxl.utils import get_column_letter
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 
 RENAME_COLUMNS = {
    "остатки": {
@@ -58,6 +60,36 @@ def clean_file(path, тип_файла):
     except Exception as e:
         print(f"Ошибка при обработке файла: {e}")
         raise
+
+def format_excel_file(path: str):
+    wb = load_workbook(path)
+
+    # 📝 Явно говорим Pylance, что ws — это Worksheet, а не None
+    ws: Worksheet = wb.active  
+
+    # 🔹 Увеличение высоты строки заголовков
+    ws.row_dimensions[1].height = 30
+
+    # 🔹 Автофильтр
+    max_col = ws.max_column
+    max_row = ws.max_row
+    ws.auto_filter.ref = f"A1:{get_column_letter(max_col)}{max_row}"
+
+    # 🔹 Вертикальные линии-разделители
+    thin = Side(border_style="thin", color="000000")
+
+    for col in range(1, max_col + 1):
+        col_letter = get_column_letter(col)
+        for row in range(1, max_row + 1):
+            cell = ws[f"{col_letter}{row}"]
+
+            # Выравнивание текста
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+
+            # Правая граница у каждой ячейки (чтобы были вертикальные линии)
+            cell.border = Border(right=thin)
+
+    wb.save(path)
 
 class DataProcessor:
     def __init__(self):
@@ -412,14 +444,42 @@ class AppGUI:
                 title="Сохранить файл Подсорт"
             )
             if path:
-                dist_df.to_excel(path, index=False)
-                messagebox.showinfo("Сохранено", f"Файл сохранен:\n{path}")
-                try:
-                    os.startfile(path)
-                except Exception:
-                    pass
+            # 1. Сохраняем DataFrame в Excel
+             with pd.ExcelWriter(path, engine="openpyxl") as writer:
+                dist_df.to_excel(writer, index=False, sheet_name="Подсорт")
+
+            # 2. Загружаем и форматируем
+             wb = load_workbook(path)
+             ws = wb.active
+
+            # 🔹 Увеличение высоты строки заголовков
+             ws.row_dimensions[1].height = 30
+
+            # 🔹 Автофильтр
+             max_col = ws.max_column
+             max_row = ws.max_row
+             ws.auto_filter.ref = f"A1:{get_column_letter(max_col)}{max_row}"
+
+            # 🔹 Вертикальные линии-разделители (границы между колонками)
+            thin = Side(border_style="thin", color="000000")
+            for col in range(1, max_col + 1):
+                col_letter = get_column_letter(col)
+                for row in range(1, max_row + 1):
+                    cell = ws[f"{col_letter}{row}"]
+                    cell.alignment = Alignment(vertical="center", wrap_text=True)
+                    # Рисуем правую границу у каждой колонки
+                    cell.border = Border(right=thin)
+
+            wb.save(path)
+
+            messagebox.showinfo("Сохранено", f"Файл сохранен:\n{path}")
+            try:
+                os.startfile(path)
+            except Exception:
+                pass
+
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось построить распределение:\n{e}")
+         messagebox.showerror("Ошибка", f"Не удалось построить распределение:\n{e}")
 
     def update_stock_after_distribution(self, df, dist_df):
     #Обновляем остатки магазинов по конечным остаткам из таблицы Подсорта
