@@ -11,6 +11,15 @@ from openpyxl.styles import Border, Side, Alignment
 from openpyxl.utils import get_column_letter
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QPushButton, QVBoxLayout, QHBoxLayout,
+    QLabel, QFileDialog, QMessageBox, QLineEdit, QFormLayout
+)
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMessageBox, QFileDialog
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QUrl
+
 
 RENAME_COLUMNS = {
    "остатки": {
@@ -200,159 +209,188 @@ class DataProcessor:
 
 from tkinter import ttk
 
-class AppGUI:
-    def __init__(self, root):
-        self.root = root
-        #self.root.title("Обработка остатков и продаж")
-        self.root.geometry("480x420")
+class AppGUI(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
         self.processor = DataProcessor()
+        self.stock_df = None
+        self.sales_df = None
+        self.price_df = None
+        self.min_stock_df = None
+        self.df_all = None
+        self.distribution_df = None
+        self.mezhmag_df = None
+
+        self.setWindowTitle("📊 Распределение товара")
+        self.setGeometry(300, 200, 500, 400)
+
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+
+        layout = QVBoxLayout()
 
         # Заголовок
-        title = ttk.Label(root, text="📊 Расспределение товара", font=("Arial", 14, "bold"))
-        title.grid(row=0, column=0, columnspan=3, pady=10)
+        title = QLabel("📊 Распределение товара")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(title)
 
-        # === Кнопки загрузки файлов ===
-        ttk.Button(root, text="📦 Загрузить остатки", command=self.load_stock).grid(row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=5)
-        ttk.Button(root, text="📈 Загрузить продажи", command=self.load_sales).grid(row=2, column=0, columnspan=3, sticky="ew", padx=20, pady=5)
-        ttk.Button(root, text="📋 Загрузить прайс-лист", command=self.load_price).grid(row=3, column=0, columnspan=3, sticky="ew", padx=20, pady=5)
-        ttk.Button(root, text="⚙ Загрузить минимальные остатки", command=self.load_min_stock).grid(row=4, column=0, columnspan=3, sticky="ew", padx=20, pady=5)
+        # Кнопки загрузки
+        self.btn_stock = QPushButton("📦 Загрузить остатки")
+        self.btn_sales = QPushButton("📈 Загрузить продажи")
+        self.btn_price = QPushButton("📋 Загрузить прайс-лист")
+        self.btn_min_stock = QPushButton("⚙ Загрузить минимальные остатки")
 
-        # === Поле ввода периода ===
-        ttk.Label(root, text="Период прогноза (в днях):", font=("Arial", 11)).grid(row=5, column=0, sticky="e", padx=10, pady=10)
-        self.days_entry = ttk.Entry(root, width=10)
-        self.days_entry.insert(0, "14")
-        self.days_entry.grid(row=5, column=1, sticky="w", padx=5, pady=10)
+        self.btn_stock.clicked.connect(self.load_stock)
+        self.btn_sales.clicked.connect(self.load_sales)
+        self.btn_price.clicked.connect(self.load_price)
+        self.btn_min_stock.clicked.connect(self.load_min_stock)
 
-        # === Кнопки действий ===
-        ttk.Button(root, text="📊 Рассчитать заказ и сохранить", command=self.calculate_order).grid(row=6, column=0, columnspan=3, sticky="ew", padx=20, pady=8)
-        ttk.Button(root, text="📦 Подсорт с Центрального склада", command=self.save_distribution).grid(row=7, column=0, columnspan=3, sticky="ew", padx=20, pady=8)
-        ttk.Button(root, text="🔄 Рассчитать межмаг", command=self.recalc_mezhmag).grid(row=8, column=0, columnspan=3, sticky="ew", padx=20, pady=8)
-        ttk.Button(root, text="💾 Выгрузить межмаг", command=self.save_mezhmag_to_excel).grid(row=9, column=0, columnspan=3, sticky="ew", padx=20, pady=8)
+        layout.addWidget(self.btn_stock)
+        layout.addWidget(self.btn_sales)
+        layout.addWidget(self.btn_price)
+        layout.addWidget(self.btn_min_stock)
 
-        # Растягиваем центральную колонку
-        root.grid_columnconfigure(0, weight=1)
-        root.grid_columnconfigure(1, weight=1)
-        root.grid_columnconfigure(2, weight=1)
+        # Поле ввода периода
+        form = QFormLayout()
+        self.days_entry = QLineEdit("14")
+        form.addRow("Период прогноза (в днях):", self.days_entry)
+        layout.addLayout(form)
+
+        # Кнопки действий
+        self.btn_calc = QPushButton("📊 Рассчитать заказ и сохранить")
+        self.btn_distribution = QPushButton("📦 Подсорт с Центрального склада")
+        self.btn_mezhmag = QPushButton("🔄 Рассчитать межмаг")
+        self.btn_export_mezhmag = QPushButton("💾 Выгрузить межмаг")
+
+        self.btn_calc.clicked.connect(self.calculate_order)
+        self.btn_distribution.clicked.connect(self.save_distribution)
+        self.btn_mezhmag.clicked.connect(self.recalc_mezhmag)
+        self.btn_export_mezhmag.clicked.connect(self.save_mezhmag_to_excel)
+
+        layout.addWidget(self.btn_calc)
+        layout.addWidget(self.btn_distribution)
+        layout.addWidget(self.btn_mezhmag)
+        layout.addWidget(self.btn_export_mezhmag)
+
+        central_widget.setLayout(layout)
 
     # === Загрузка файлов ===
     def load_stock(self):
-        path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
-        if not path:
-            return
-        try:
-            self.processor.load_stock(path) # здесь clean_file вызовется автоматически
-            self.stock_df = self.processor.stock_df
-            messagebox.showinfo("Файл загружен", f"Остатки загружены: {len(self.stock_df)} строк")
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось загрузить остатки:\n{e}")
+            path, _ = QFileDialog.getOpenFileName(self, "Выбрать файл Остатки", "", "Excel Files (*.xlsx)")
+            if not path:
+                return
+            try:
+                self.processor.load_stock(path)
+                self.stock_df = self.processor.stock_df
+                QMessageBox.information(self, "Файл загружен", f"Остатки загружены: {len(self.stock_df)} строк")
+            except Exception as e:
+                QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить остатки:\n{e}")
 
     def load_sales(self):
-        path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
-        if not path:
-            return
-        try:
-            self.processor.load_sales(path) # здесь clean_file вызовется автоматически
-            self.sales_df = self.processor.sales_df
-            messagebox.showinfo("Файл загружен", f"Продажи загружены: {len(self.sales_df)} строк")
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось загрузить продажи:\n{e}")
+            path, _ = QFileDialog.getOpenFileName(self, "Выбрать файл Продажи", "", "Excel Files (*.xlsx)")
+            if not path:
+                return
+            try:
+                self.processor.load_sales(path)
+                self.sales_df = self.processor.sales_df
+                QMessageBox.information(self, "Файл загружен", f"Продажи загружены: {len(self.sales_df)} строк")
+            except Exception as e:
+                QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить продажи:\n{e}")
 
     def load_price(self):
-        path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+        path, _ = QFileDialog.getOpenFileName(self, "Выбрать прайс-лист", "", "Excel Files (*.xlsx)")
         if not path:
             return
         try:
-            self.processor.load_price(path) # здесь clean_file вызовется автоматически
+            self.processor.load_price(path)
             self.price_df = self.processor.price_df
-            messagebox.showinfo("Файл загружен", f"Прайс-лист загружен: {len(self.price_df)} строк")
+            QMessageBox.information(self, "Файл загружен", f"Прайс-лист загружен: {len(self.price_df)} строк")
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось загрузить прайс-лист:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить прайс-лист:\n{e}")
 
     def load_min_stock(self):
-        path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+        path, _ = QFileDialog.getOpenFileName(self, "Выбрать минимальные остатки", "", "Excel Files (*.xlsx)")
         if not path:
             return
         try:
             self.min_stock_df = pd.read_excel(path)
             if not {"Категория", "min stock", "max прием"}.issubset(self.min_stock_df.columns):
                 raise ValueError("В файле должны быть колонки: Категория, min stock, max прием")
-            messagebox.showinfo("Файл загружен", f"Минимальные остатки загружены: {len(self.min_stock_df)} строк")
+            QMessageBox.information(self, "Файл загружен", f"Минимальные остатки загружены: {len(self.min_stock_df)} строк")
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось загрузить минимальные остатки:\n{e}")
-
-    # === Расчёт заказа ===
-    def calculate_order(self):
-        if self.stock_df is None or self.sales_df is None or self.price_df is None:
-            messagebox.showerror("Ошибка", "Сначала загрузите остатки, продажи и прайс-лист")
-            return
-
-        try:
-            days = int(self.days_entry.get())
-            if days <= 0:
-                raise ValueError("Введите положительное число дней")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить минимальные остатки:\n{e}")
             
-            # 🔹 передаём данные в процессор
-            self.processor.stock_df = self.stock_df
-            self.processor.sales_df = self.sales_df
-            self.processor.price_df = self.price_df
+        # === Расчёт заказа ===
 
-            df = self.processor.generate_summary()  # Берём объединённый датафрейм через DataProcessor
+def calculate_order(self):
+    if self.processor.stock_df is None or self.processor.sales_df is None or self.processor.price_df is None:
+        QMessageBox.critical(self, "Ошибка", "Сначала загрузите остатки, продажи и прайс-лист")
+        return
 
-            # Заменяем пустые значения на 0, чтобы не мешали при расчетах
-            df["Остаток"] = df["Остаток"].fillna(0)
-            df["Продажи"] = df["Продажи"].fillna(0)
-            
+    try:
+        days = int(self.days_entry.text())
+        if days <= 0:
+            raise ValueError("Введите положительное число дней")
 
-            # Расчет заказа
-            df["Заказ на период"] = df.apply(
-                lambda row: (row.get("Продажи", 0) / 7.0) * days - row.get("Остаток", 0),
-                axis=1
+        # 🔹 формируем объединённый датафрейм
+        df = self.processor.generate_summary()
+
+        # Заменяем пустые значения на 0
+        df["Остаток"] = df["Остаток"].fillna(0)
+        df["Продажи"] = df["Продажи"].fillna(0)
+
+        # Расчет заказа
+        df["Заказ на период"] = df.apply(
+            lambda row: (row.get("Продажи", 0) / 7.0) * days - row.get("Остаток", 0),
+            axis=1
+        )
+        df["Заказ на период"] = df["Заказ на период"].fillna(0)
+
+        # Комментарии
+        def comment(row):
+            if row["Остаток"] == 0 and row.get("Продажи", 0) == 0 and row["Заказ на период"] == 0:
+                return "Отправить минимальное количество"
+            elif row["Заказ на период"] < 0:
+                return "Излишек"
+            elif row["Заказ на период"] > 0:
+                return "Дозаказ"
+            else:
+                return ""
+
+        df["Комментарий"] = df.apply(comment, axis=1)
+
+        # Минимальные остатки
+        if self.processor.min_stock_df is not None:
+            df = df.merge(
+                self.processor.min_stock_df[["Категория", "max прием"]],
+                on="Категория",
+                how="left"
             )
+            df.loc[df["Комментарий"] == "Отправить минимальное количество", "Заказ на период"] = \
+                df.loc[df["Комментарий"] == "Отправить минимальное количество", "max прием"].fillna(0)
+            df.drop(columns=["max прием"], inplace=True, errors="ignore")
 
-            df["Заказ на период"] = df["Заказ на период"].fillna(0)
+        self.processor.df_all = df
 
-            # Комментарии
-            def comment(row):
-                if row["Остаток"] == 0 and row.get("Продажи", 0) == 0 and row["Заказ на период"] == 0:
-                    return "Отправить минимальное количество"
-                elif row["Заказ на период"] < 0:
-                    return "Излишек"
-                elif row["Заказ на период"] > 0:
-                    return "Дозаказ"
-                else:
-                    return ""
+        # Сохранение в Excel
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить файл заказа",
+            "",
+            "Excel Files (*.xlsx)"
+        )
+        if path:
+            df.to_excel(path, index=False)
+            QMessageBox.information(self, "Сохранено", f"Файл сохранен:\n{path}")
 
-            df["Комментарий"] = df.apply(comment, axis=1)
+            # 🔹 Открываем сохраненный файл
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
-            # Минимальные остатки
-            if self.min_stock_df is not None:
-                df = df.merge(
-                    self.min_stock_df[["Категория", "max прием"]],
-                    on="Категория",
-                    how="left"
-                )
-                df.loc[df["Комментарий"] == "Отправить минимальное количество", "Заказ на период"] = \
-                    df.loc[df["Комментарий"] == "Отправить минимальное количество", "max прием"].fillna(0)
-                df.drop(columns=["max прием"], inplace=True, errors="ignore")
+    except Exception as e:
+        QMessageBox.critical(self, "Ошибка", f"Не удалось рассчитать заказ:\n{e}")
 
-            self.df_all = df
-
-            # Сохраняем файл
-            path = filedialog.asksaveasfilename(
-                defaultextension=".xlsx",
-                filetypes=[("Excel files", "*.xlsx")],
-                title="Сохранить файл заказа"
-            )
-            if path:
-                df.to_excel(path, index=False)
-                messagebox.showinfo("Сохранено", f"Файл сохранен:\n{path}")
-                try:
-                    os.startfile(path)
-                except Exception:
-                    pass
-
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось рассчитать заказ:\n{e}")
 
     # === Распределение с Центрального склада ===
     def safe_int(self, value):
